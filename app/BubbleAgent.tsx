@@ -15,6 +15,7 @@ export default function BubbleAgent() {
   // Listen for orb click events to open the chat
   useEffect(() => {
     const handler = () => {
+      console.log('[BubbleAgent] ai-orb-click received');
       // simulate the pop sequence
       setPopped(true);
       setTimeout(() => setOpen(true), 220);

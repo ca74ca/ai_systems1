@@ -78,6 +78,7 @@ export default function AIOrb() {
         // Dispatch a custom event on click so other components (BubbleAgent) can open the chat
         onClick={() => {
           if (typeof window !== 'undefined') {
+            console.log('[AIOrb] clicked — dispatching ai-orb-click');
             window.dispatchEvent(new CustomEvent('ai-orb-click'));
           }
         }}
