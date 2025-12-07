@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function BubbleAgent() {
   const [open, setOpen] = useState(false);
@@ -11,6 +11,18 @@ export default function BubbleAgent() {
     setPopped(true);
     setTimeout(() => setOpen(true), 280); // bubble pops → chat appears
   };
+
+  // Listen for orb click events to open the chat
+  useEffect(() => {
+    const handler = () => {
+      // simulate the pop sequence
+      setPopped(true);
+      setTimeout(() => setOpen(true), 220);
+    };
+
+    window.addEventListener("ai-orb-click", handler as EventListener);
+    return () => window.removeEventListener("ai-orb-click", handler as EventListener);
+  }, []);
 
   return (
     <div className="absolute top-40 left-10 z-50">
@@ -104,10 +116,24 @@ export default function BubbleAgent() {
           >
             {/* CHAT CONTENT */}
             <div className="relative z-20 h-full flex flex-col">
-              <h3 className="text-xl font-bold mb-2">AI Studio Agent</h3>
-              <p className="text-white/70 text-sm mb-4">
-                What are we building together today?
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold mb-2">AI Studio Agent</h3>
+                  <p className="text-white/70 text-sm mb-4">
+                    What are we building together today?
+                  </p>
+                </div>
+                <button
+                  aria-label="Close chat"
+                  onClick={() => {
+                    setOpen(false);
+                    setPopped(false);
+                  }}
+                  className="text-white/60 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
 
               {/* Chat Box */}
               <div className="flex-1 bg-black/30 rounded-xl p-3 overflow-y-auto text-sm">

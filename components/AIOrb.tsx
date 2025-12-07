@@ -75,6 +75,12 @@ export default function AIOrb() {
         tabIndex={0}
         role="button"
         aria-label="AI assistant orb"
+        // Dispatch a custom event on click so other components (BubbleAgent) can open the chat
+        onClick={() => {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('ai-orb-click'));
+          }
+        }}
         style={{ transform }}
         className={[
           "w-10 h-10 rounded-full",
@@ -82,6 +88,8 @@ export default function AIOrb() {
           "shadow-[0_0_30px_10px_rgba(0,255,180,0.4)]",
           "transition-transform transition-shadow duration-200 ease-out",
           "animate-pulse animate-breathe",
+          // clickable affordance
+          "cursor-pointer",
           blink ? "scale-90 brightness-150" : "scale-100",
         ].join(" ")}
       />
