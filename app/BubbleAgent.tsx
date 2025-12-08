@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function BubbleAgent() {
   const [open, setOpen] = useState(false);
@@ -9,6 +9,7 @@ export default function BubbleAgent() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
   const [loading, setLoading] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleClick = () => {
     setPopped(true);
@@ -19,7 +20,6 @@ export default function BubbleAgent() {
   useEffect(() => {
     const handler = () => {
       console.log('[BubbleAgent] ai-orb-click received');
-      // simulate the pop sequence
       setPopped(true);
       setTimeout(() => setOpen(true), 220);
     };
@@ -32,27 +32,66 @@ export default function BubbleAgent() {
     if (!input.trim()) return;
     const userText = input.trim();
     setInput("");
+
+    // append user message
     setMessages((m) => [...m, { role: "user", content: userText }]);
     setLoading(true);
 
+    // prepare streaming call
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [...messages, { role: "user", content: userText }] }),
+        signal,
       });
 
-      const data = await res.json();
-      if (res.ok && data.assistant) {
-        setMessages((m) => [...m, { role: "assistant", content: data.assistant }]);
-      } else {
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
         setMessages((m) => [...m, { role: "assistant", content: "(error) " + JSON.stringify(data) }]);
+        return;
       }
+
+      // push an empty assistant message and update it progressively
+      setMessages((m) => [...m, { role: "assistant", content: "" }]);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let assistantText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+
+        // OpenAI stream uses `data: ` lines; we append raw text for simplicity
+        assistantText += chunk;
+        // Update the last assistant message
+        setMessages((curr) => {
+          const copy = [...curr];
+          // find last assistant index
+          const idx = copy.map((c) => c.role).lastIndexOf("assistant");
+          if (idx >= 0) copy[idx] = { role: "assistant", content: assistantText };
+          return copy;
+        });
+      }
+
     } catch (err: any) {
-      setMessages((m) => [...m, { role: "assistant", content: "(network error) " + String(err) }]);
+      if (err.name === 'AbortError') {
+        setMessages((m) => [...m, { role: "assistant", content: "(aborted)" }]);
+      } else {
+        setMessages((m) => [...m, { role: "assistant", content: "(network error) " + String(err) }]);
+      }
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
+  };
+
+  const cancelStream = () => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
   };
 
   return (
@@ -154,16 +193,22 @@ export default function BubbleAgent() {
                     What are we building together today?
                   </p>
                 </div>
-                <button
-                  aria-label="Close chat"
-                  onClick={() => {
-                    setOpen(false);
-                    setPopped(false);
-                  }}
-                  className="text-white/60 hover:text-white"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-2">
+                  {loading && (
+                    <button onClick={cancelStream} className="text-sm text-white/60">Stop</button>
+                  )}
+                  <button
+                    aria-label="Close chat"
+                    onClick={() => {
+                      setOpen(false);
+                      setPopped(false);
+                      cancelStream();
+                    }}
+                    className="text-white/60 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {/* Chat Box */}
