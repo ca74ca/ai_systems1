@@ -6,6 +6,9 @@ import { useEffect, useState } from "react";
 export default function BubbleAgent() {
   const [open, setOpen] = useState(false);
   const [popped, setPopped] = useState(false);
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const handleClick = () => {
     setPopped(true);
@@ -24,6 +27,33 @@ export default function BubbleAgent() {
     window.addEventListener("ai-orb-click", handler as EventListener);
     return () => window.removeEventListener("ai-orb-click", handler as EventListener);
   }, []);
+
+  const submit = async () => {
+    if (!input.trim()) return;
+    const userText = input.trim();
+    setInput("");
+    setMessages((m) => [...m, { role: "user", content: userText }]);
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [...messages, { role: "user", content: userText }] }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.assistant) {
+        setMessages((m) => [...m, { role: "assistant", content: data.assistant }]);
+      } else {
+        setMessages((m) => [...m, { role: "assistant", content: "(error) " + JSON.stringify(data) }]);
+      }
+    } catch (err: any) {
+      setMessages((m) => [...m, { role: "assistant", content: "(network error) " + String(err) }]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="absolute top-40 left-10 z-50">
@@ -138,19 +168,43 @@ export default function BubbleAgent() {
 
               {/* Chat Box */}
               <div className="flex-1 bg-black/30 rounded-xl p-3 overflow-y-auto text-sm">
-                <p className="text-white/80">👋 Hey! Tell me your idea…</p>
+                {messages.length === 0 ? (
+                  <p className="text-white/80">👋 Hey! Tell me your idea…</p>
+                ) : (
+                  messages.map((m, i) => (
+                    <div key={i} className={`mb-2 ${m.role === 'user' ? 'text-right' : 'text-left'}`}>
+                      <div className={`inline-block px-3 py-2 rounded-xl ${m.role === 'user' ? 'bg-white/20' : 'bg-white/10'}`}>
+                        <span className="text-sm text-white/90">{m.content}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                {loading && <p className="text-white/60">Thinking…</p>}
               </div>
 
-              <input
-                placeholder="Type your message..."
-                className="
-                  mt-3 p-2 rounded-xl 
-                  bg-white/20 
-                  placeholder-white/60 
-                  focus:outline-none 
-                  text-white
-                "
-              />
+              <div className="mt-3 flex gap-2">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+                  placeholder="Type your message..."
+                  className="
+                    flex-1 p-2 rounded-xl 
+                    bg-white/20 
+                    placeholder-white/60 
+                    focus:outline-none 
+                    text-white
+                  "
+                />
+                <button
+                  onClick={submit}
+                  disabled={loading}
+                  className="px-4 py-2 rounded-xl bg-white text-black font-bold disabled:opacity-40"
+                >
+                  Send
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
