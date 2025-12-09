@@ -73,7 +73,7 @@ export default function Home() {
                 WebkitTextStroke: "1px rgba(255,255,255,0.3)",
               }}
             >
-              AI Systems Studio
+              AI Systems Studio powered by VARACIS 
             </motion.h1>
             
           </div>
