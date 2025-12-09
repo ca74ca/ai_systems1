@@ -1,35 +1,67 @@
-import { NextResponse } from 'next/server';
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY, // must be set in .env.local + Render
+});
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const messages = body.messages ?? (body.prompt ? [{ role: 'user', content: body.prompt }] : []);
-
-    const OPENAI_KEY = process.env.OPENAI_API_KEY;
-    const MODEL = process.env.OPENAI_MODEL ?? 'gpt-3.5-turbo';
-
-    if (!OPENAI_KEY) {
-      return NextResponse.json({ error: 'Missing OpenAI API key. Set OPENAI_API_KEY in your environment.' }, { status: 401 });
+    if (!process.env.OPENAI_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "Missing OPENAI_API_KEY on server" }),
+        { status: 500 }
+      );
     }
 
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_KEY}`,
-      },
-      body: JSON.stringify({ model: MODEL, messages, max_tokens: 800, temperature: 0.2 }),
+    const body = await req.json().catch(() => null);
+
+    if (!body || !Array.isArray(body.messages)) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "Invalid request body. Expected { messages: [{ role, content }, ...] }",
+        }),
+        { status: 400 }
+      );
+    }
+
+    // You can change this model if you want
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
+    const response = await openai.responses.create({
+      model,
+      input: body.messages,
+      max_output_tokens: 800,
+      temperature: 0.2,
     });
 
-    const data = await resp.json();
+    // Extract plain text from Responses API
+    let replyText = "";
+    const output = response.output?.[0];
 
-    if (!resp.ok) {
-      return NextResponse.json({ error: data }, { status: resp.status });
+    if (output && output.type === "message") {
+      const textPart = output.content?.find((c: any) => c.type === "output_text");
+      if (textPart && textPart.text) {
+        replyText = textPart.text;
+      }
     }
 
-    const assistant = data.choices?.[0]?.message?.content ?? '';
-    return NextResponse.json({ assistant, raw: data });
+    if (!replyText) {
+      replyText = "I’m having trouble generating a response right now.";
+    }
+
+    return new Response(JSON.stringify({ reply: replyText }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (err: any) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.error("Chat route error:", err);
+    return new Response(
+      JSON.stringify({
+        error: "Chat route failed",
+        details: err?.message ?? "Unknown error",
+      }),
+      { status: 500 }
+    );
   }
 }
