@@ -1,66 +1,52 @@
+import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // must be set in .env.local + Render
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json(
+      { error: "Missing OPENAI_API_KEY on the server." },
+      { status: 500 }
+    );
+  }
+
+  let body: any;
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "Missing OPENAI_API_KEY on server" }),
-        { status: 500 }
-      );
-    }
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
 
-    const body = await req.json().catch(() => null);
+  const messages = body?.messages;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return NextResponse.json(
+      { error: "Request must include a non-empty messages array." },
+      { status: 400 }
+    );
+  }
 
-    if (!body || !Array.isArray(body.messages)) {
-      return new Response(
-        JSON.stringify({
-          error:
-            "Invalid request body. Expected { messages: [{ role, content }, ...] }",
-        }),
-        { status: 400 }
-      );
-    }
-
-    // You can change this model if you want
-    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-
-    const response = await openai.responses.create({
-      model,
-      input: body.messages,
-      max_output_tokens: 800,
+  try {
+    const completion = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini-2024-07-18",
+      messages,
+      max_tokens: 800,
       temperature: 0.2,
     });
 
-    // Extract plain text from Responses API
-    let replyText = "";
-    const output = response.output?.[0];
+    const replyText =
+      completion.choices?.[0]?.message?.content?.toString() ?? "";
 
-    if (output && output.type === "message") {
-      const textPart = output.content?.find((c: any) => c.type === "output_text");
-      if (textPart && textPart.text) {
-        replyText = textPart.text;
-      }
-    }
-
-    if (!replyText) {
-      replyText = "I’m having trouble generating a response right now.";
-    }
-
-    return new Response(JSON.stringify({ reply: replyText }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return NextResponse.json({ reply: replyText });
   } catch (err: any) {
-    console.error("Chat route error:", err);
-    return new Response(
-      JSON.stringify({
-        error: "Chat route failed",
+    console.error("Chat API error:", err);
+    return NextResponse.json(
+      {
+        error: "Failed to get response from OpenAI.",
         details: err?.message ?? "Unknown error",
-      }),
+      },
       { status: 500 }
     );
   }

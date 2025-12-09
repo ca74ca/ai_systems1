@@ -9,7 +9,6 @@ export default function BubbleAgent() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
   const [loading, setLoading] = useState(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleClick = () => {
     setPopped(true);
@@ -37,61 +36,30 @@ export default function BubbleAgent() {
     setMessages((m) => [...m, { role: "user", content: userText }]);
     setLoading(true);
 
-    // prepare streaming call
-    abortControllerRef.current = new AbortController();
-    const signal = abortControllerRef.current.signal;
-
     try {
-      const res = await fetch("/api/chat/stream", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [...messages, { role: "user", content: userText }] }),
-        signal,
       });
 
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}));
-        setMessages((m) => [...m, { role: "assistant", content: "(error) " + JSON.stringify(data) }]);
-        return;
-      }
+      const data = await res.json();
 
-      // push an empty assistant message and update it progressively
-      setMessages((m) => [...m, { role: "assistant", content: "" }]);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let assistantText = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-
-        // OpenAI stream uses `data: ` lines; we append raw text for simplicity
-        assistantText += chunk;
-        // Update the last assistant message
-        setMessages((curr) => {
-          const copy = [...curr];
-          // find last assistant index
-          const idx = copy.map((c) => c.role).lastIndexOf("assistant");
-          if (idx >= 0) copy[idx] = { role: "assistant", content: assistantText };
-          return copy;
-        });
-      }
-
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        setMessages((m) => [...m, { role: "assistant", content: "(aborted)" }]);
+      if (res.ok && data.reply) {
+        setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
       } else {
-        setMessages((m) => [...m, { role: "assistant", content: "(network error) " + String(err) }]);
+        const errMsg = data?.error ? JSON.stringify(data.error) : JSON.stringify(data);
+        setMessages((m) => [...m, { role: "assistant", content: "(error) " + errMsg }]);
       }
+    } catch (err: any) {
+      setMessages((m) => [...m, { role: "assistant", content: "(network error) " + String(err) }]);
     } finally {
       setLoading(false);
-      abortControllerRef.current = null;
     }
   };
 
   const cancelStream = () => {
-    if (abortControllerRef.current) abortControllerRef.current.abort();
+    // no-op for non-streaming endpoint
   };
 
   return (
